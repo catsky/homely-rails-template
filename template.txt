@@ -1,0 +1,133 @@
+gsub_file 'Gemfile', /gem 'spring'/, "# gem 'spring'"
+
+gsub_file 'Gemfile', "# Bundle edge Rails instead: gem 'rails', github: 'rails/rails'\n", ''
+gsub_file 'Gemfile', "# Use sqlite3 as the database for Active Record", ''
+gsub_file 'Gemfile', "# Use SCSS for stylesheets", ''
+gsub_file 'Gemfile', "# Use Uglifier as compressor for JavaScript assets\n", ''
+gsub_file 'Gemfile', "# Use CoffeeScript for .coffee assets and views\n", ''
+gsub_file 'Gemfile', "# See https://github.com/sstephenson/execjs#readme for more supported runtimes\n", ''
+gsub_file 'Gemfile', "# gem 'therubyracer', platforms: :ruby\n", ''
+
+gsub_file 'Gemfile', "# Use jquery as the JavaScript library\n", ''
+gsub_file 'Gemfile', "# Turbolinks makes following links in your web application faster. Read more: https://github.com/rails/turbolinks\n", ''
+gsub_file 'Gemfile', "# Build JSON APIs with ease. Read more: https://github.com/rails/jbuilder\n", ''
+gsub_file 'Gemfile', "# bundle exec rake doc:rails generates the API under doc/api.\n", ''
+
+gem "therubyracer"
+gem "less-rails"
+gem "twitter-bootstrap-rails"
+
+gem 'simple_form'
+gem 'devise'
+
+gem 'cancancan', '~> 1.9'
+gem 'whenever', require: false
+
+
+after_bundle do
+  git :init
+
+  git add: '.'
+  git commit: %Q{ -am 'Initial commit' }
+  
+  # Remove default comments from routes.rb
+  remove_file 'config/routes.rb'
+  create_file 'config/routes.rb' do <<-CODE
+Rails.application.routes.draw do
+end
+CODE
+  end
+    
+  generate 'simple_form:install', '--bootstrap'
+  
+  git add: '.'
+  git commit: %Q{ -am 'Simple form install' }
+  
+  generate 'bootstrap:install', 'less'
+  generate 'bootstrap:layout', 'application', '--force'
+  
+  git add: '.'
+  git commit: %Q{ -am 'Bootstrap install' }
+  
+  
+  generate 'devise:install'
+  
+  environment env: 'development' do 
+    'config.action_mailer.default_url_options = { host: "localhost", port: 3000 }'
+    'config.eager_load = true'
+  end
+  
+  file 'app/models/ability.rb', <<-RUBY
+class Ability
+  include CanCan::Ability
+
+  def initialize(user)
+    apply_plugin_permissions(user)
+  end
+end
+  RUBY
+  
+  file 'app/views/application/home.html', <<-CODE
+<div class='alert alert-info'>Your application is now up and running!</div>
+
+<h4 class='page-header'>You might also like to check out:</h4>
+
+<div class="list-group">
+  <a href="#" class="list-group-item disabled">
+    <h4 class="list-group-item-heading">Scheduled Mail Checker</h4>
+
+    <p class="list-group-item-text">
+      Setup your email account list, and schedule the system to automatically log in and check for new mail every interval.<br />
+      From here, design the actions to take based off simple rules.
+    </p>
+  </a>
+</div>
+  CODE
+  
+  route "##root to: 'application#home'\n\n"  
+  generate 'devise', 'User'
+  
+  gsub_file 'config/routes.rb', '##', "\n\n\t"
+  
+  gsub_file 'app/models/user.rb', /class User < ActiveRecord::Base/ do <<-RUBY
+class User < ActiveRecord::Base
+RUBY
+  end
+  
+  gsub_file 'app/controllers/application_controller.rb', /protect_from_forgery with: :exception/ do <<-RUBY
+protect_from_forgery with: :exception
+
+
+  before_action :authenticate_user!, unless: :skip_authentication?
+  check_authorization unless: :skip_authorisation?
+
+  private
+  
+  def current_path
+    request.original_fullpath
+  end
+  
+  def root_page?
+    root_path == current_path
+  end
+
+  # Skip devise?
+  def skip_authentication?
+    root_page?
+  end
+
+  # Skip CanCan?
+  def skip_authorisation?
+    devise_controller? || security_controller? || root_page?
+  end    
+RUBY
+  end
+  
+  rake 'db:migrate'
+
+  git add: '.'
+  git commit: %Q{ -am 'Devise and CanCan' }
+end
+
+run 'bundle'
+
